@@ -12,7 +12,6 @@ import com.hotel.booking.exception.InvalidStateTransitionException;
 import com.hotel.booking.pricing.PricingStrategyResolver;
 import com.hotel.booking.repository.BookingRepository;
 import com.hotel.booking.repository.RoomRepository;
-import com.hotel.booking.service.PaymentService;
 import com.hotel.booking.service.impl.BookingServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;

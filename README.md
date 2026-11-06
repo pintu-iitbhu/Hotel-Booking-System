@@ -1,100 +1,123 @@
 # Hotel Booking System
 
-A backend service for a hotel booking platform built with **Java 21 + Spring Boot 3.2 + H2 (in-memory)**.
+This is a Spring Boot backend for a hotel booking platform. I built it as a machine-coding exercise, so the focus was on clean design and extensibility rather than feature completeness. It runs fully in-memory using H2, so there's nothing to set up beyond Java and Maven.
+
+**Stack:** Java 21, Spring Boot 3.2, H2 (in-memory), Maven
 
 ---
 
-## How to Build and Run
+## Running the project
 
-**Prerequisites:** Java 21, Maven 3.8+
+You'll need Java 21 and Maven 3.8+. Clone or extract the project and run:
 
 ```bash
-# Clone / extract the project
-cd Hotel-Booking-System
-
-# Build
-mvn clean package -DskipTests
-
-# Run
 mvn spring-boot:run
 ```
 
-The service starts on **http://localhost:8080**.  
-H2 console available at **http://localhost:8080/h2-console** (JDBC URL: `jdbc:h2:mem:hoteldb`).
+That's it. The service starts on `http://localhost:8080`. If you want to poke around the database, the H2 console is at `http://localhost:8080/h2-console` — use JDBC URL `jdbc:h2:mem:hoteldb`, username `sa`, no password.
 
-### Run Tests
+To run the tests:
+
 ```bash
 mvn test
 ```
 
 ---
 
-## API Endpoints
+## What the API looks like
 
-| Method | Path | Description |
-|--------|------|-------------|
-| POST | `/api/owners` | Register a property owner |
-| GET | `/api/owners/{id}` | Get owner by ID |
-| POST | `/api/owners/{ownerId}/properties` | Add a property to an owner |
-| GET | `/api/owners/{ownerId}/properties` | List owner's properties |
-| GET | `/api/search?city=&checkInDate=&checkOutDate=&numGuests=&minPrice=&maxPrice=&amenities=&minStarRating=` | Search properties |
-| POST | `/api/bookings` | Create a booking |
-| GET | `/api/bookings/{id}` | Get booking by ID |
-| GET | `/api/bookings?email=` | Get bookings by guest email |
-| PUT | `/api/bookings/{id}/check-in` | Check in |
-| PUT | `/api/bookings/{id}/check-out` | Check out |
-| DELETE | `/api/bookings/{id}` | Cancel booking |
-| POST | `/api/bookings/{bookingId}/payment` | Pay for a booking |
-| GET | `/api/bookings/{bookingId}/payment` | Get payment details |
+**Owners and properties**
+```
+POST   /api/owners                          register an owner
+GET    /api/owners/{id}
+POST   /api/owners/{ownerId}/properties     onboard a property under an owner
+GET    /api/owners/{ownerId}/properties
+GET    /api/properties/{id}
+```
 
----
+**Discovery**
+```
+GET    /api/search?city=&locality=&checkInDate=&checkOutDate=
+                  &numGuests=&minPrice=&maxPrice=&amenities=&minStarRating=
+```
+Any combination of those query params works — just pass the ones you care about.
 
-## Key Design Decisions
+**Booking lifecycle**
+```
+POST   /api/bookings                        create a booking (starts as PENDING)
+GET    /api/bookings/{id}
+GET    /api/bookings?email=
+PUT    /api/bookings/{id}/check-in
+PUT    /api/bookings/{id}/check-out
+DELETE /api/bookings/{id}                   cancel + trigger refund
+```
 
-### 1. Single Owner model for single and multi-property owners
-An `Owner` always has a list of `Property` objects. A single-property owner is simply an owner with one property — no separate class or flag needed.
-
-### 2. Pluggable Search Filters (Open/Closed Principle)
-Every filter (`CityFilter`, `LocalityFilter`, `StarRatingFilter`, `AmenityFilter`, `PriceRangeFilter`, `AvailabilityFilter`, `GuestCapacityFilter`) implements `SearchFilter`. `SearchServiceImpl` auto-collects all Spring beans of that type. Adding a new filter = implementing the interface + annotating with `@Component`. `GuestCapacityFilter` activates only when dates are absent (when dates are present, `AvailabilityFilter` already handles capacity — no double-filtering).
-
-### 3. Payment Gateway Abstraction
-`PaymentGateway` interface with `supports(PaymentMethod)`. `PaymentGatewayResolver` picks the right implementation at runtime. Currently mocked: `CardPaymentGateway`, `UpiPaymentGateway`, `WalletPaymentGateway`.
-
-### 4. Pluggable Cancellation Policies
-`CancellationPolicy` interface drives refund logic. `CancellationPolicyResolver` selects the right policy based on days until check-in (≥7 days → full refund, 2–6 days → 50%, <2 days → none).
-
-### 5. Booking State Machine
-Transitions are enforced inside `Booking.transitionTo()`:
-`PENDING → CONFIRMED → CHECKED_IN → CHECKED_OUT`
-`PENDING / CONFIRMED → CANCELLED`
-
-Invalid transitions throw `InvalidStateTransitionException` (HTTP 422).
-
-### 6. Pluggable Pricing Strategy
-`PricingStrategy` interface with `isApplicable(room, dateRange)` + `calculateTotalPrice(room, dateRange)`. `PricingStrategyResolver` picks the first applicable strategy (ordered via `@Order`). Shipped with `WeekendSurchargePricingStrategy` (25% surcharge on Sat/Sun for SUITE/PENTHOUSE, `@Order(1)`) and `FlatNightlyPricingStrategy` (default fallback, `@Order(10)`). New strategies plug in with `@Component`.
-
-### 7. Concurrency / Double-booking Prevention
-- `RoomRepository.findAvailableRooms` uses `@Lock(PESSIMISTIC_WRITE)` to lock rows during availability check.
-- `BookingServiceImpl.createBooking` is `synchronized` as an additional safeguard within a single JVM.
-- Room entity carries `@Version` for optimistic locking fallback.
+**Payment**
+```
+POST   /api/bookings/{bookingId}/payment    pay for a booking (PENDING → CONFIRMED on success)
+GET    /api/bookings/{bookingId}/payment
+```
 
 ---
 
-## Assumptions
+## How it's structured
 
-- Authentication/authorisation is out of scope; all endpoints are open.
-- A "guest" is identified by name + email (no separate User entity required).
-- Payment is always mocked to succeed; real gateway integration is behind the `PaymentGateway` interface.
-- Pricing is flat per-night; dynamic pricing can be added via a `PricingStrategy` interface (bonus extension point).
-- Currency is INR by default.
+```
+com.hotel.booking
+├── domain/
+│   ├── entity/       Owner, Property, Room, Booking, Payment
+│   ├── enums/        BookingStatus, RoomType, Amenity, PaymentMethod, PaymentStatus
+│   └── valueobject/  DateRange, Location
+├── repository/       Spring Data JPA interfaces (H2 today, swappable tomorrow)
+├── search/           SearchFilter interface + 7 implementations
+├── payment/          PaymentGateway interface + resolver + 3 mocks
+├── cancellation/     CancellationPolicy interface + resolver + 3 implementations
+├── pricing/          PricingStrategy interface + resolver + 2 implementations
+├── service/          interfaces + implementations
+├── controller/       REST layer
+├── dto/              request/response records
+└── exception/        exception hierarchy + GlobalExceptionHandler
+```
 
 ---
 
-## What I Would Do With More Time
+## Design decisions
 
-- JWT-based auth with role separation (GUEST / OWNER / ADMIN).
-- Idempotency keys stored in DB to prevent duplicate payment processing.
-- Dynamic pricing strategy (pluggable via `PricingStrategy` interface).
-- Pagination on search results.
-- OpenAPI / Swagger documentation.
-- Integration tests covering the full HTTP layer with `@SpringBootTest + MockMvc`.
+**Owners and properties.** The requirement said to model a standalone property as a special case of a chain, not a separate path. So `Owner` just has a `List<Property>` — a single-property hotel is an owner with one property. No flags, no separate entity.
+
+**Search filters.** I wanted new filters to be addable without touching existing code. Each filter implements a `SearchFilter` interface (`isApplicable` + `test`), and `SearchServiceImpl` just injects the full `List<SearchFilter>` from the Spring context — it doesn't know what filters exist. Adding a new one is literally one class with `@Component`. The seven shipped filters cover city, locality, star rating, amenities, price range, availability, and guest capacity. One thing worth noting: `GuestCapacityFilter` skips itself when dates are provided, because `AvailabilityFilter` already handles capacity in that case.
+
+**Payment.** `PaymentGateway` is an interface with `process`, `refund`, and `supports`. A resolver picks the right implementation at runtime. Currently there are mocks for card, UPI, and wallet. Swapping in a real gateway means implementing the interface and registering it — nothing else changes.
+
+**Cancellation policies.** Same pattern. `CancellationPolicyResolver` picks a policy based on how far out the check-in is: 7+ days gets a full refund, 2–6 days gets 50%, under 2 days gets nothing. If the refund call to the gateway fails, we throw rather than silently continue.
+
+**Booking state machine.** State transitions live inside `Booking.transitionTo()` in the entity itself, not scattered across service methods. The valid paths are:
+```
+PENDING → CONFIRMED → CHECKED_IN → CHECKED_OUT
+PENDING / CONFIRMED → CANCELLED
+```
+Anything else throws `InvalidStateTransitionException` and comes back as HTTP 422.
+
+**Pricing (bonus).** `PricingStrategy` follows the same pluggable pattern. `PricingStrategyResolver` picks the first applicable strategy by `@Order`. Right now there's a weekend surcharge (25% on Sat/Sun for suites and penthouses) and a flat nightly fallback. New pricing rules are one class.
+
+**Concurrency.** `findAvailableRooms` runs with `@Lock(PESSIMISTIC_WRITE)`, so the DB holds a row lock for the duration of the booking transaction. That prevents two concurrent requests from both seeing the same room as available. `Room` also has a `@Version` field as a secondary optimistic lock guard. Cancelled bookings are excluded from the availability query, so inventory releases itself automatically — no extra step needed.
+
+**A few JPA things I was deliberate about.** I avoided `@Data` on entities because Lombok's generated `hashCode` uses all fields, which triggers lazy collection loads and causes issues in JPA sets. Instead each entity uses `@EqualsAndHashCode(onlyExplicitlyIncluded = true)` keyed on `id` only. I also disabled OSIV (`spring.jpa.open-in-view=false`) and used `@EntityGraph` on booking queries so lazy associations are loaded within the transaction rather than leaking into the web layer.
+
+---
+
+## Assumptions I made
+
+- Auth is out of scope per the brief, so all endpoints are open.
+- A guest is just a name + email — no separate User entity needed for this exercise.
+- Payment gateways always go through the mock. The abstraction is there to make them swappable.
+- Amounts are `BigDecimal`, assumed INR, no currency conversion.
+- `Room.available = false` is an admin flag for things like maintenance. It's separate from date-based booking availability.
+
+---
+
+## What I'd tackle next
+
+The two things I'd prioritise are **idempotency** and **pagination**. For idempotency, the `GatewayRequest` already carries a UUID — I'd persist that in the `Payment` table with a unique constraint and return the existing record on a duplicate. For pagination, the current search loads all properties into memory and filters in Java, which obviously doesn't scale; I'd replace it with JPA Specifications or Querydsl so the filtering happens in the DB.
+
+After that: OpenAPI docs with `springdoc-openapi`, integration tests with `@SpringBootTest` + `MockMvc`, and JWT-based auth with GUEST / OWNER / ADMIN roles.
