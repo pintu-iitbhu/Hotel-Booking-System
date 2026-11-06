@@ -1,5 +1,8 @@
 package com.hotel.booking.service.impl;
 
+import com.hotel.booking.cancellation.CancellationPolicy;
+import com.hotel.booking.cancellation.CancellationPolicyResolver;
+import com.hotel.booking.cancellation.RefundResult;
 import com.hotel.booking.domain.entity.Booking;
 import com.hotel.booking.domain.entity.Payment;
 import com.hotel.booking.domain.enums.BookingStatus;
@@ -17,6 +20,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.util.UUID;
 
 @Service
@@ -26,6 +30,7 @@ public class PaymentServiceImpl implements PaymentService {
     private final PaymentRepository paymentRepository;
     private final BookingRepository bookingRepository;
     private final PaymentGatewayResolver gatewayResolver;
+    private final CancellationPolicyResolver cancellationPolicyResolver;
 
     @Override
     @Transactional
@@ -69,6 +74,32 @@ public class PaymentServiceImpl implements PaymentService {
         }
 
         return paymentRepository.save(payment);
+    }
+
+    @Override
+    @Transactional
+    public void processRefundIfPaid(Long bookingId) {
+        paymentRepository.findByBookingId(bookingId).ifPresent(payment -> {
+            if (payment.getStatus() != PaymentStatus.SUCCESS) return;
+
+            Booking booking = payment.getBooking();
+            CancellationPolicy policy = cancellationPolicyResolver.resolve(booking);
+            RefundResult refund = policy.calculateRefund(booking);
+
+            if (refund.getRefundAmount().compareTo(BigDecimal.ZERO) <= 0) return;
+
+            GatewayResponse response = gatewayResolver
+                    .resolve(payment.getMethod())
+                    .refund(payment.getTransactionId(), refund.getDescription());
+
+            if (!response.isSuccess()) {
+                throw new BadRequestException("Refund failed: " + response.getFailureReason());
+            }
+
+            payment.setStatus(refund.getRefundAmount().compareTo(booking.getTotalPrice()) == 0
+                    ? PaymentStatus.REFUNDED : PaymentStatus.PARTIAL_REFUND);
+            paymentRepository.save(payment);
+        });
     }
 
     @Override

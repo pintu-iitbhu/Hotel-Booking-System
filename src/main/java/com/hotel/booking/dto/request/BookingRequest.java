@@ -9,7 +9,7 @@ public record BookingRequest(
         @NotNull Long propertyId,
         @NotNull RoomType roomType,
         @NotBlank String guestName,
-        @NotBlank String guestEmail,
+        @Email @NotBlank String guestEmail,
         String guestPhone,
         @Min(1) int numGuests,
         @NotNull @FutureOrPresent LocalDate checkInDate,

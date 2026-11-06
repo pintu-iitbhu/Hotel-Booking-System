@@ -1,6 +1,5 @@
 package com.hotel.booking.domain.valueobject;
 
-import com.hotel.booking.exception.BadRequestException;
 import jakarta.persistence.Column;
 import jakarta.persistence.Embeddable;
 import lombok.AllArgsConstructor;
@@ -24,13 +23,13 @@ public class DateRange {
 
     public void validate() {
         if (checkInDate == null || checkOutDate == null) {
-            throw new BadRequestException("Check-in and check-out dates are required");
+            throw new IllegalArgumentException("Check-in and check-out dates are required");
         }
         if (!checkInDate.isBefore(checkOutDate)) {
-            throw new BadRequestException("Check-out date must be after check-in date");
+            throw new IllegalArgumentException("Check-out date must be after check-in date");
         }
         if (checkInDate.isBefore(LocalDate.now())) {
-            throw new BadRequestException("Check-in date cannot be in the past");
+            throw new IllegalArgumentException("Check-in date cannot be in the past");
         }
     }
 

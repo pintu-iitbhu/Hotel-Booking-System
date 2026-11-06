@@ -25,6 +25,11 @@ public class GlobalExceptionHandler {
         return build(HttpStatus.BAD_REQUEST, ex.getMessage());
     }
 
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ErrorResponse> handleIllegalArgument(IllegalArgumentException ex) {
+        return build(HttpStatus.BAD_REQUEST, ex.getMessage());
+    }
+
     @ExceptionHandler(InventoryUnavailableException.class)
     public ResponseEntity<ErrorResponse> handleInventory(InventoryUnavailableException ex) {
         return build(HttpStatus.CONFLICT, ex.getMessage());
