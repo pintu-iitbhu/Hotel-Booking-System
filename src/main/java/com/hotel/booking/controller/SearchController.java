@@ -4,6 +4,8 @@ import com.hotel.booking.domain.enums.Amenity;
 import com.hotel.booking.dto.response.PropertyResponse;
 import com.hotel.booking.search.SearchCriteria;
 import com.hotel.booking.service.SearchService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
@@ -17,6 +19,7 @@ import java.time.LocalDate;
 import java.util.List;
 import java.util.Set;
 
+@Tag(name = "Discovery", description = "Search and browse available properties")
 @RestController
 @RequestMapping("/api/search")
 @RequiredArgsConstructor
@@ -24,6 +27,8 @@ public class SearchController {
 
     private final SearchService searchService;
 
+    @Operation(summary = "Search properties",
+            description = "All params are optional — pass any combination of city, locality, dates, numGuests, price range, amenities, minStarRating.")
     @GetMapping
     public ResponseEntity<List<PropertyResponse>> search(
             @RequestParam(required = false) String city,

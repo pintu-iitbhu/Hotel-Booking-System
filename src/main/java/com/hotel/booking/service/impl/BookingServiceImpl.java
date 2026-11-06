@@ -61,7 +61,8 @@ public class BookingServiceImpl implements BookingService {
         booking.setSpecialRequests(request.specialRequests());
         booking.setStatus(BookingStatus.PENDING);
 
-        return bookingRepository.save(booking);
+        Booking saved = bookingRepository.save(booking);
+        return reload(saved.getId());
     }
 
     @Override
@@ -76,7 +77,8 @@ public class BookingServiceImpl implements BookingService {
     public Booking checkIn(Long bookingId) {
         Booking booking = findById(bookingId);
         booking.transitionTo(BookingStatus.CHECKED_IN);
-        return bookingRepository.save(booking);
+        bookingRepository.save(booking);
+        return reload(bookingId);
     }
 
     @Override
@@ -84,7 +86,8 @@ public class BookingServiceImpl implements BookingService {
     public Booking checkOut(Long bookingId) {
         Booking booking = findById(bookingId);
         booking.transitionTo(BookingStatus.CHECKED_OUT);
-        return bookingRepository.save(booking);
+        bookingRepository.save(booking);
+        return reload(bookingId);
     }
 
     @Override
@@ -92,9 +95,14 @@ public class BookingServiceImpl implements BookingService {
     public Booking cancel(Long bookingId) {
         Booking booking = findById(bookingId);
         booking.transitionTo(BookingStatus.CANCELLED);
-        Booking saved = bookingRepository.save(booking);
+        bookingRepository.save(booking);
         paymentService.processRefundIfPaid(bookingId);
-        return saved;
+        return reload(bookingId);
+    }
+
+    private Booking reload(Long id) {
+        return bookingRepository.findById(id)
+                .orElseThrow(() -> new ResourceNotFoundException("Booking", id));
     }
 
     @Override
