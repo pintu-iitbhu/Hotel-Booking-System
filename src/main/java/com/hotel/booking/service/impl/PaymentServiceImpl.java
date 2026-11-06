@@ -21,6 +21,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.util.Optional;
 import java.util.UUID;
 
 @Service
@@ -35,6 +36,17 @@ public class PaymentServiceImpl implements PaymentService {
     @Override
     @Transactional
     public Payment processPayment(Long bookingId, PaymentMethod method) {
+        return processPayment(bookingId, method, UUID.randomUUID().toString());
+    }
+
+    @Override
+    @Transactional
+    public Payment processPayment(Long bookingId, PaymentMethod method, String idempotencyKey) {
+        Optional<Payment> existing = paymentRepository.findByIdempotencyKey(idempotencyKey);
+        if (existing.isPresent()) {
+            return existing.get();
+        }
+
         Booking booking = bookingRepository.findById(bookingId)
                 .orElseThrow(() -> new ResourceNotFoundException("Booking", bookingId));
 
@@ -53,7 +65,7 @@ public class PaymentServiceImpl implements PaymentService {
                 .bookingId(bookingId)
                 .amount(booking.getTotalPrice())
                 .method(method)
-                .idempotencyKey(UUID.randomUUID().toString())
+                .idempotencyKey(idempotencyKey)
                 .build();
 
         GatewayResponse gatewayResponse = gatewayResolver.resolve(method).process(gatewayRequest);
@@ -63,6 +75,7 @@ public class PaymentServiceImpl implements PaymentService {
         payment.setAmount(booking.getTotalPrice());
         payment.setMethod(method);
         payment.setTransactionId(gatewayResponse.getTransactionId());
+        payment.setIdempotencyKey(idempotencyKey);
 
         if (gatewayResponse.isSuccess()) {
             payment.setStatus(PaymentStatus.SUCCESS);

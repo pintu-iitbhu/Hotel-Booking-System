@@ -10,6 +10,8 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.UUID;
+
 @Tag(name = "Payments", description = "Process payment for a booking")
 @RestController
 @RequestMapping("/api/bookings/{bookingId}/payment")
@@ -18,13 +20,15 @@ public class PaymentController {
 
     private final PaymentService paymentService;
 
-    @Operation(summary = "Pay for a booking", description = "Processes payment via the specified method. On success, booking transitions from PENDING to CONFIRMED.")
+    @Operation(summary = "Pay for a booking", description = "Processes payment via the specified method. On success, booking transitions from PENDING to CONFIRMED. Pass Idempotency-Key header to safely retry.")
     @PostMapping
     public ResponseEntity<PaymentResponse> pay(
             @PathVariable Long bookingId,
-            @Valid @RequestBody InitiatePaymentRequest request) {
+            @Valid @RequestBody InitiatePaymentRequest request,
+            @RequestHeader(value = "Idempotency-Key", required = false) String idempotencyKey) {
+        String key = (idempotencyKey != null) ? idempotencyKey : UUID.randomUUID().toString();
         return ResponseEntity.ok(
-                PaymentResponse.from(paymentService.processPayment(bookingId, request.method())));
+                PaymentResponse.from(paymentService.processPayment(bookingId, request.method(), key)));
     }
 
     @Operation(summary = "Get payment details for a booking")

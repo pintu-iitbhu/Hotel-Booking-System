@@ -40,6 +40,9 @@ public class Payment {
 
     private String transactionId;
 
+    @Column(unique = true)
+    private String idempotencyKey;
+
     private String failureReason;
 
     @CreationTimestamp
