@@ -63,7 +63,8 @@ class PricingStrategyTest {
                 java.util.List.of(weekendStrategy, flatStrategy));
 
         Room suite = roomWith(RoomType.SUITE, new BigDecimal("2000"));
-        DateRange range = new DateRange(LocalDate.of(2027, 1, 6), LocalDate.of(2027, 1, 9));
+        // Jan 8 (Fri) → Jan 11 (Mon): includes Sat + Sun, so surcharge applies
+        DateRange range = new DateRange(LocalDate.of(2027, 1, 8), LocalDate.of(2027, 1, 11));
 
         BigDecimal total = resolver.resolve(suite, range);
 
