@@ -1,8 +1,5 @@
 package com.hotel.booking.service;
 
-import com.hotel.booking.cancellation.CancellationPolicyResolver;
-import com.hotel.booking.cancellation.RefundResult;
-import com.hotel.booking.cancellation.policy.FreeCancellationPolicy;
 import com.hotel.booking.domain.entity.Booking;
 import com.hotel.booking.domain.entity.Property;
 import com.hotel.booking.domain.entity.Room;
@@ -12,10 +9,10 @@ import com.hotel.booking.domain.valueobject.DateRange;
 import com.hotel.booking.dto.request.BookingRequest;
 import com.hotel.booking.exception.InventoryUnavailableException;
 import com.hotel.booking.exception.InvalidStateTransitionException;
-import com.hotel.booking.payment.PaymentGatewayResolver;
+import com.hotel.booking.pricing.PricingStrategyResolver;
 import com.hotel.booking.repository.BookingRepository;
-import com.hotel.booking.repository.PaymentRepository;
 import com.hotel.booking.repository.RoomRepository;
+import com.hotel.booking.service.PaymentService;
 import com.hotel.booking.service.impl.BookingServiceImpl;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -39,9 +36,8 @@ class BookingServiceTest {
 
     @Mock private BookingRepository bookingRepository;
     @Mock private RoomRepository roomRepository;
-    @Mock private PaymentRepository paymentRepository;
-    @Mock private CancellationPolicyResolver cancellationPolicyResolver;
-    @Mock private PaymentGatewayResolver paymentGatewayResolver;
+    @Mock private PaymentService paymentService;
+    @Mock private PricingStrategyResolver pricingStrategyResolver;
 
     @InjectMocks private BookingServiceImpl bookingService;
 
@@ -89,6 +85,7 @@ class BookingServiceTest {
         saved.setGuestEmail(validRequest.guestEmail());
         saved.setNumGuests(validRequest.numGuests());
 
+        when(pricingStrategyResolver.resolve(any(), any())).thenReturn(new BigDecimal("4000"));
         when(bookingRepository.save(any())).thenReturn(saved);
 
         Booking result = bookingService.createBooking(validRequest);
@@ -149,25 +146,24 @@ class BookingServiceTest {
         booking.setDateRange(dateRange);
 
         when(bookingRepository.findById(10L)).thenReturn(Optional.of(booking));
-        when(paymentRepository.findByBookingId(10L)).thenReturn(Optional.empty());
         when(bookingRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         Booking cancelled = bookingService.cancel(10L);
 
         assertThat(cancelled.getStatus()).isEqualTo(BookingStatus.CANCELLED);
-        verify(paymentRepository, never()).save(any());
+        verify(paymentService).processRefundIfPaid(10L);
     }
 
     @Test
     void totalPrice_calculatedCorrectly_basedOnNights() {
+        BigDecimal expectedTotal = new BigDecimal("4000");
         when(roomRepository.findAvailableRooms(any(), any(), anyInt(), any(), any()))
                 .thenReturn(List.of(room));
+        when(pricingStrategyResolver.resolve(any(), any())).thenReturn(expectedTotal);
         when(bookingRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
 
         Booking result = bookingService.createBooking(validRequest);
 
-        long expectedNights = 2;
-        BigDecimal expected = new BigDecimal("2000").multiply(BigDecimal.valueOf(expectedNights));
-        assertThat(result.getTotalPrice()).isEqualByComparingTo(expected);
+        assertThat(result.getTotalPrice()).isEqualByComparingTo(expectedTotal);
     }
 }
