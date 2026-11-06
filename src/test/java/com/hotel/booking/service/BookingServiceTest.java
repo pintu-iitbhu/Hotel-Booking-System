@@ -86,6 +86,7 @@ class BookingServiceTest {
 
         when(pricingStrategyResolver.resolve(any(), any())).thenReturn(new BigDecimal("4000"));
         when(bookingRepository.save(any())).thenReturn(saved);
+        when(bookingRepository.findById(1L)).thenReturn(Optional.of(saved));
 
         Booking result = bookingService.createBooking(validRequest);
 
@@ -159,7 +160,14 @@ class BookingServiceTest {
         when(roomRepository.findAvailableRooms(any(), any(), anyInt(), any(), any()))
                 .thenReturn(List.of(room));
         when(pricingStrategyResolver.resolve(any(), any())).thenReturn(expectedTotal);
-        when(bookingRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        Booking savedBooking = new Booking();
+        savedBooking.setId(1L);
+        savedBooking.setRoom(room);
+        savedBooking.setDateRange(new DateRange(validRequest.checkInDate(), validRequest.checkOutDate()));
+        savedBooking.setTotalPrice(expectedTotal);
+        savedBooking.setStatus(BookingStatus.PENDING);
+        when(bookingRepository.save(any())).thenReturn(savedBooking);
+        when(bookingRepository.findById(1L)).thenReturn(Optional.of(savedBooking));
 
         Booking result = bookingService.createBooking(validRequest);
 
