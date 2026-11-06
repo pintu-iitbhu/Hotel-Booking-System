@@ -4,6 +4,8 @@ This is a Spring Boot backend for a hotel booking platform. I built it as a mach
 
 **Stack:** Java 21, Spring Boot 3.2, H2 (in-memory), Maven
 
+Interactive API docs available at `http://localhost:8080/swagger-ui/index.html` once the service is running.
+
 ---
 
 ## Running the project
@@ -57,6 +59,11 @@ DELETE /api/bookings/{id}                   cancel + trigger refund
 POST   /api/bookings/{bookingId}/payment    pay for a booking (PENDING → CONFIRMED on success)
 GET    /api/bookings/{bookingId}/payment
 ```
+To safely retry a payment without double-charging, pass a client-generated `Idempotency-Key` header:
+```
+Idempotency-Key: <your-uuid>
+```
+If the same key is submitted twice, the original payment is returned — the gateway is never called a second time.
 
 ---
 
@@ -102,7 +109,9 @@ Anything else throws `InvalidStateTransitionException` and comes back as HTTP 42
 
 **Concurrency.** `findAvailableRooms` runs with `@Lock(PESSIMISTIC_WRITE)`, so the DB holds a row lock for the duration of the booking transaction. That prevents two concurrent requests from both seeing the same room as available. `Room` also has a `@Version` field as a secondary optimistic lock guard. Cancelled bookings are excluded from the availability query, so inventory releases itself automatically — no extra step needed.
 
-**A few JPA things I was deliberate about.** I avoided `@Data` on entities because Lombok's generated `hashCode` uses all fields, which triggers lazy collection loads and causes issues in JPA sets. Instead each entity uses `@EqualsAndHashCode(onlyExplicitlyIncluded = true)` keyed on `id` only. I also disabled OSIV (`spring.jpa.open-in-view=false`) and used `@EntityGraph` on booking queries so lazy associations are loaded within the transaction rather than leaking into the web layer.
+**Payment idempotency.** `Payment` stores an `idempotencyKey` with a unique DB constraint. The client can pass an `Idempotency-Key` header on the payment endpoint. If the same key arrives twice, the existing payment is returned immediately — the gateway is never charged again. This is the right behaviour for retried requests in unreliable networks.
+
+**A few JPA things I was deliberate about.** I avoided `@Data` on entities because Lombok's generated `hashCode` uses all fields, which triggers lazy collection loads and causes issues in JPA sets. Instead each entity uses `@EqualsAndHashCode(onlyExplicitlyIncluded = true)` keyed on `id` only. I also disabled OSIV (`spring.jpa.open-in-view=false`) and used explicit `JOIN FETCH` queries on booking reads so lazy associations are fully loaded within the transaction rather than leaking into the web layer.
 
 ---
 
@@ -118,6 +127,6 @@ Anything else throws `InvalidStateTransitionException` and comes back as HTTP 42
 
 ## What I'd tackle next
 
-The two things I'd prioritise are **idempotency** and **pagination**. For idempotency, the `GatewayRequest` already carries a UUID — I'd persist that in the `Payment` table with a unique constraint and return the existing record on a duplicate. For pagination, the current search loads all properties into memory and filters in Java, which obviously doesn't scale; I'd replace it with JPA Specifications or Querydsl so the filtering happens in the DB.
+The main gap is **search scalability**. The current implementation loads all properties into memory and filters in Java — fine for the exercise, but it doesn't scale. The fix is JPA Specifications (`JpaSpecificationExecutor`) with pagination so filtering happens in the DB and results come back paged.
 
-After that: OpenAPI docs with `springdoc-openapi`, integration tests with `@SpringBootTest` + `MockMvc`, and JWT-based auth with GUEST / OWNER / ADMIN roles.
+After that: integration tests with `@SpringBootTest` + `MockMvc`, and JWT-based auth with GUEST / OWNER / ADMIN roles.
